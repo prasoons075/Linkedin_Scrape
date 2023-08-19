@@ -76,7 +76,7 @@ actions.login(driver, CONFIG.email, CONFIG.password)
 # Create lists to store data for Excel
 data = []
 # columns = ['Company_Name', 'Employee_Count', 'where_they_live','where_they_studied','what_they_do','What_they_are_skilled_at','what_they_studied','Total_Job_Posting_Count',"Recently Posted Jobs"]
-columns = ['Company_Name', 'Employee_Count', 'Company_employee_data','Total_Job_Posting_Count', "Recently Posted Jobs"]
+columns = ['Company_Name', 'Employee_Count', 'Company_employee_data','Total_Job_Posting_Count', "Recently Posted Jobs", "Employee Satisfaction"]
 
 
 # Iterate through each company URL in the company_list DataFrame
@@ -123,7 +123,7 @@ for index, row in company_list.iterrows():
             # Extract and print the number of employees
             geo_loc_company = str(employee_element_geo_loc.text.replace("toggle off", ""))
             geo_loc_employees.append(geo_loc_company)
-            print(f"Company: {row['Company Name']}, Geo Location of Employees: {geo_loc_company}")
+            # print(f"Company: {row['Company Name']}, Geo Location of Employees: {geo_loc_company}")
             next_button.click()
         except NoSuchElementException:
             break
@@ -169,11 +169,30 @@ for index, row in company_list.iterrows():
     # Convert the list to a single string
     single_string = '\n'.join(recently_posted_jobs_list)
 
-    # print(single_string)
+    # Employee Satisfaction from Indeed Feed
+    indeed_url = "https://www.indeed.com/companies?hl=en&co=US&isid=us_tmp_ca_browse-companies_ch_webpage_au_enterprise_pe__pr__cr_&ikw=browse-companies"
+    driver.get(indeed_url)
+
+    # Company name you want to search for
+    company_name = row['Company Name'].split("|")[0].strip()
+
+    # XPaths for search input and search button
+    xpath_for_search = "//input[@name='q']"
+    xpath_for_search_button = "//button[normalize-space()='Find Companies']"
+
+    # Locate the search input element and enter the company name
+    search_page = driver.find_element(By.XPATH, xpath_for_search)
+    search_page.send_keys(company_name)
+    search_button_click = driver.find_element(By.XPATH, xpath_for_search_button)
+    search_button_click.click()
+    xpath_for_satisfaction_feed = "//body/div/div/main[@class='css-q1edpo eu4oa1w0']/div[@class='css-f9in6m eu4oa1w0']/div[@class='css-qkv3x5 eu4oa1w0']/section[@class='css-u74ql7 eu4oa1w0']/div[1]"
+    satisfaction_rate = driver.find_element(By.XPATH, xpath_for_satisfaction_feed)
+    
+    # print(satisfaction_rate.text)
 
     # Append data to the list
     # data.append([row['Company Name'], number_of_employees, formatted_company_data[0],formatted_company_data[1],formatted_company_data[2],formatted_company_data[3],formatted_company_data[4], numbers, single_string])
-    data.append([row['Company Name'], number_of_employees, formatted_company_data, numbers, single_string])
+    data.append([row['Company Name'], number_of_employees, formatted_company_data, numbers, single_string, satisfaction_rate.text])
 
 # Close the browser after iterating through all companies
 driver.quit()
