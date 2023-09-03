@@ -11,6 +11,39 @@ from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, NoSuchElementException, ElementClickInterceptedException
+import openpyxl
+import time
+
+def convert_int_to_intType(pagination_list):
+    pagination_list_updated = []
+    for item in pagination_list:
+        if item.isdigit():
+            pagination_list_updated.append(int(item))
+        else:
+            pagination_list_updated.append(item)
+    return pagination_list_updated
+
+def process_job_data(data, worksheet):
+    # Split the data into lines
+    lines = data.strip().split('\n')
+
+    # Define the list of words to filter out
+    words_to_filter = ["Promoted","alumni work here","Vision, 401(k)","Medical, 401(k)","Your profile matches this job","Medical, Dental","$","Easy Apply","applicants","applicant", "Actively recruiting", "benefits", "benefit", "Within the past"]
+    
+    # Filter out lines containing any of the specified words
+    filtered_lines = [line for line in lines if all(word not in line for word in words_to_filter)]
+
+    # Initialize variables to hold job posting information
+    job_posting = []
+
+    # Iterate through the filtered lines and extract job posting information
+    for line in filtered_lines:
+        job_posting.append(line)
+        if len(job_posting) == 4:
+            # Append the job posting information to the worksheet
+            worksheet.append(job_posting)
+            # Reset the job posting information
+            job_posting = []
 
 
 def format_company_data(texts):
@@ -68,15 +101,22 @@ company_list = pd.read_excel(CONFIG.data)
 # Initialize the Chrome driver
 driver = webdriver.Chrome()
 
-# Login to LinkedIn
-actions.login(driver, CONFIG.email, CONFIG.password)
+# wait = WebDriverWait(driver, 200)
 
-# driver.implicitly_wait(100)
+# Login to LinkedIn
+actions.login(driver, CONFIG.email, CONFIG.password, timeout=60)
+
+# wait = WebDriverWait(driver, 60)
+# driver.implicitly_wait(30)
 
 # Create lists to store data for Excel
 data = []
-# columns = ['Company_Name', 'Employee_Count', 'where_they_live','where_they_studied','what_they_do','What_they_are_skilled_at','what_they_studied','Total_Job_Posting_Count',"Recently Posted Jobs"]
-columns = ['Company_Name', 'Employee_Count', 'Company_employee_data','Total_Job_Posting_Count', "Recently Posted Jobs", "Employee Satisfaction"]
+columns = ['Company_Name', 'Industry' ,'Employee_Count', 'where_they_live','what_they_do','What_they_are_skilled_at','what_they_studied','Total_Job_Posting_Count',"Recently Posted Jobs", "Employee Satisfaction"]
+# columns = ['Company_Name', 'Employee_Count', 'Company_employee_data','Total_Job_Posting_Count', "Recently Posted Jobs", "Employee Satisfaction"]
+
+job_listing = []
+
+# columns_job_posting = ['Company_Name', 'industry', "Job_posting", "Posted_on"]
 
 
 # Iterate through each company URL in the company_list DataFrame
@@ -90,12 +130,17 @@ for index, row in company_list.iterrows():
 
     # Open the LinkedIn company people page
     driver.get(company_people_url)
-
+    
     # Wait for the page to load (you might need to adjust the waiting time based on your internet speed)
-    driver.implicitly_wait(10)
+    driver.implicitly_wait(60)
 
     # Find the element containing the number of employees using XPath
     # Note: Make sure to use the correct XPath based on your page structure
+
+    industry_type= "//body/div[@class='application-outlet']/div[@class='authentication-outlet']/div[@class='organization-outlet relative']/div[2]/div[1]/div[2]/main[1]/div[1]/section[1]/div[1]/div[2]/div[1]/div[1]/div[2]/div[1]/div[1]/div[1]"
+    industry_type = driver.find_element(By.XPATH, industry_type)
+    industry_type_text = industry_type.text
+
     xpath_for_employee_count = "//span[@class='t-normal t-black--light link-without-visited-state link-without-hover-state']"
 
     employee_element_count = driver.find_element(By.XPATH, xpath_for_employee_count)
@@ -109,28 +154,34 @@ for index, row in company_list.iterrows():
 
     # Click the "Show more" button
     show_more_button.click()
-
-    geo_loc_employees = []
-    # Click the "Show more" button repeatedly until it's unclickable
-    for _ in range(5):
-        try:
-            next_button = driver.find_element(By.CSS_SELECTOR, "button[aria-label='Next']")
-            xpath_for_employee_geographical_location = "//body/div[@class='application-outlet']/div[@class='authentication-outlet']/div[@class='organization-outlet relative']/div[2]/div[1]/div[2]/main[1]/div[2]/div[1]/div[1]/div[1]/div[1]"#"//body/div[@class='application-outlet']/div[@class='authentication-outlet']/div[@class='organization-outlet relative']/div[2]/div[1]/div[2]/main[1]/div[2]/div[1]/div[1]/div[1]/div[1]" #".artdeco-card.p4.m2.org-people-bar-graph-module__geo-region"
-
-            # employee_element_geo_loc = driver.find_element(By.XPATH, xpath_for_employee_geographical_location)
-            employee_element_geo_loc = driver.find_element(By.XPATH, xpath_for_employee_geographical_location)
-
-            # Extract and print the number of employees
-            geo_loc_company = str(employee_element_geo_loc.text.replace("toggle off", ""))
-            geo_loc_employees.append(geo_loc_company)
-            # print(f"Company: {row['Company Name']}, Geo Location of Employees: {geo_loc_company}")
-            next_button.click()
-        except NoSuchElementException:
-            break
+    driver.implicitly_wait(60)
     
-    formatted_company_data = format_company_data(geo_loc_employees)
+    employee_work_location = "//div[@class='artdeco-card p4 m2 org-people-bar-graph-module__geo-region']"
+    employee_work_location_text = driver.find_element(By.XPATH, employee_work_location)
+    employee_work_location_text = employee_work_location_text.text.replace("toggle off", "")
 
-    formatted_company_data = [string.replace('\n', ' ') for string in formatted_company_data]
+    next_button = driver.find_element(By.CSS_SELECTOR, "button[aria-label='Next']")
+    next_button.click()
+    driver.implicitly_wait(60)
+    next_button.click()
+    driver.implicitly_wait(60)
+    employee_current_fucntion = ".artdeco-card.p4.m2.org-people-bar-graph-module__current-function"
+    employee_current_fucntion_text= driver.find_element(By.CSS_SELECTOR, employee_current_fucntion)
+    employee_current_fucntion_text = employee_current_fucntion_text.text.replace("toggle off", "")
+
+    next_button.click()    
+    driver.implicitly_wait(60)
+
+    employee_skillset = ".artdeco-card.p4.m2.org-people-bar-graph-module__skill-explicit"
+    employee_skillset_text = driver.find_element(By.CSS_SELECTOR, employee_skillset)
+    employee_skillset_text = employee_skillset_text.text.replace("toggle off", "")
+
+    next_button.click()
+    driver.implicitly_wait(60)
+
+    what_employees_studied =".artdeco-card.p4.m2.org-people-bar-graph-module__field-of-study"
+    what_employees_studied_text = driver.find_element(By.CSS_SELECTOR, what_employees_studied)
+    what_employees_studied_text= what_employees_studied_text.text.replace("toggle off", "")
 
     # Capture the URL before clicking the "Show more" button
     initial_url = driver.current_url
@@ -140,7 +191,7 @@ for index, row in company_list.iterrows():
 
     # Open the LinkedIn company people page
     driver.get(company_people_url)
-
+    driver.implicitly_wait(60)
     xpath_for_company_job_count = ".artdeco-card.org-jobs-job-search-form-module.container"
                                                
     # employee_element_geo_loc = driver.find_element(By.XPATH, xpath_for_employee_geographical_location)
@@ -169,10 +220,122 @@ for index, row in company_list.iterrows():
     # Convert the list to a single string
     single_string = '\n'.join(recently_posted_jobs_list)
 
+    #fetching all jobs posting for a company code start
+
+    show_all_jobs = "//span[@class='t-black--light text-body-medium-bold']"
+    show_all_jobs_click = driver.find_element(By.XPATH, show_all_jobs)
+    show_all_jobs_click.click()
+    driver.implicitly_wait(60)
+    time.sleep(10)
+
+    current_url = driver.current_url
+
+    # Define a regular expression pattern to match "f_C=" followed by numbers and "%"
+    pattern = r'f_C=([0-9]+)%'
+    
+    # Use re.search to find the pattern in the URL
+    match = re.search(pattern, current_url)
+    
+    # Check if a match was found
+    if match:
+        # Extract the matched number
+        number = match.group(1)
+        print("Number between f_C= and %:", number)
+
+        select_company = "//div[@data-basic-filter-parameter-name='company']"
+        select_company_click = driver.find_element(By.XPATH, select_company)
+        select_company_click.click()
+        driver.implicitly_wait(60)
+        print("filter clicked")
+        reset_all_companies ="//button[@aria-label='Reset selected Company']"
+        reset_all_companies_click = driver.find_element(By.XPATH, reset_all_companies)
+        reset_all_companies_click.click()    
+        driver.implicitly_wait(60)
+        print("reset clicked")
+        # Company name you want to search for
+        company_name = row['Company Name'].split("|")[0].strip()
+        select_top_company = "//label[@for='company-"+number+"']"
+        select_top_company_click = driver.find_element(By.XPATH, select_top_company)
+        select_top_company_click.click()
+        driver.implicitly_wait(60)
+        print("selected only company clicked")
+        search_result = ".artdeco-button.artdeco-button--2.artdeco-button--primary.ember-view.ml2"
+        search_result_click = driver.find_element(By.CSS_SELECTOR, search_result)
+        search_result_click.click()
+        driver.implicitly_wait(60)
+        print("filter applied")
+    else:
+        print("No match found.")
+
+    driver.implicitly_wait(60)
+
+    job_posting_pagination = "//ul[@class='artdeco-pagination__pages artdeco-pagination__pages--number']"
+    job_posting_pagination_count = driver.find_element(By.XPATH, job_posting_pagination)
+
+    pagination_list = [job_posting_pagination_count.text][0].split('\n')
+
+    pagination_list = convert_int_to_intType(pagination_list)
+    last_page = None
+    i = 1
+    while True:
+        try:
+            # if isinstance(pagination_list[-1], int): #pagination_list[-1].isdigit()
+            #     last_page = pagination_list[-1]
+            #     break
+            last_page = int(pagination_list[-2]) + 1
+            last_known_page = "//button[@aria-label='Page " + str(last_page) + "']"
+            last_known_page_click = driver.find_element(By.XPATH, last_known_page)
+            print("current last page: ", last_page)
+            # last_known_page_click.click()
+
+            job_posting_pagination = "//ul[@class='artdeco-pagination__pages artdeco-pagination__pages--number']"
+            job_posting_pagination_count = driver.find_element(By.XPATH, job_posting_pagination)
+            #".jobs-search-results-list"
+            job_posting_scrollbar = "//ul[@class='scaffold-layout__list-container']" #"//body/div[@class='application-outlet']/div[@class='authentication-outlet']/div[4]/div[1]/div[1]/main[1]/div[1]/div[1]/div[1]"
+            # # Locate the left scrollable element using its XPath or other suitable locator
+            left_scroll_element = driver.find_element(By.XPATH, "//body/div[@class='application-outlet']/div[@class='authentication-outlet']/div[4]/div[1]/div[1]/main[1]/div[1]/div[1]/div[1]")
+            #  # Scroll the left element using JavaScript
+            driver.execute_script("arguments[0].scrollTop = arguments[0].scrollHeight;", left_scroll_element)
+            driver.implicitly_wait(60)
+            time.sleep(3)
+            # "//body/div[@class='application-outlet']/div[@class='authentication-outlet']/div[4]/div[1]/div[1]/main[1]/div[1]/div[1]/div[1]"
+            job_posting = driver.find_element(By.XPATH, job_posting_scrollbar)
+            job_posting_text = job_posting.text
+            # print(job_posting.text)
+            # Load an existing Excel workbook and its worksheet (if it exists)
+            try:
+                workbook = openpyxl.load_workbook("Linkedin_Scrape/job_postings.xlsx")
+                worksheet = workbook.active
+            except FileNotFoundError:
+                # If the file doesn't exist, create a new workbook and worksheet
+                workbook = openpyxl.Workbook()
+                worksheet = workbook.active
+                # Define headers for the Excel file for the first time
+                headers = ["Job Title", "Company", "Location", "Posted"]
+                worksheet.append(headers)  
+            # Call the method to process the job data and append it to the worksheet
+            process_job_data(job_posting.text, worksheet)
+            # Save the Excel file
+            workbook.save("Linkedin_Scrape/job_postings.xlsx")
+            # print("done")
+            i=i+1
+            next_page = "//button[@aria-label='Page " + str(i) + "']"
+            next_page_click = driver.find_element(By.XPATH, next_page)
+            print(next_page)
+            next_page_click.click()
+            driver.implicitly_wait(60)
+            # print(job_posting_pagination_count.text)
+            pagination_list = [job_posting_pagination_count.text][0].split('\n')
+            pagination_list = convert_int_to_intType(pagination_list)
+        except:
+            break
+
+        #fetching all jobs posting for a company code ends
+    
     # Employee Satisfaction from Indeed Feed
     indeed_url = "https://www.indeed.com/companies?hl=en&co=US&isid=us_tmp_ca_browse-companies_ch_webpage_au_enterprise_pe__pr__cr_&ikw=browse-companies"
     driver.get(indeed_url)
-
+    driver.implicitly_wait(60)
     # Company name you want to search for
     company_name = row['Company Name'].split("|")[0].strip()
 
@@ -185,15 +348,19 @@ for index, row in company_list.iterrows():
     search_page.send_keys(company_name)
     search_button_click = driver.find_element(By.XPATH, xpath_for_search_button)
     search_button_click.click()
-    xpath_for_satisfaction_feed = "//body/div/div/main[@class='css-q1edpo eu4oa1w0']/div[@class='css-f9in6m eu4oa1w0']/div[@class='css-qkv3x5 eu4oa1w0']/section[@class='css-u74ql7 eu4oa1w0']/div[1]"
+    driver.implicitly_wait(60)
+    xpath_company ="body > div:nth-child(2) > div:nth-child(1) > main:nth-child(1) > div:nth-child(1) > div:nth-child(2) > section:nth-child(1) > div:nth-child(3) > div:nth-child(1) > div:nth-child(1) > div:nth-child(2) > div:nth-child(1) > a:nth-child(1) > div:nth-child(1)"
+    company_click = driver.find_element(By.CSS_SELECTOR, xpath_company)
+    company_click.click()
+    driver.implicitly_wait(3)      
+    xpath_for_satisfaction_feed = "//div[@class='css-1cosc8r e37uo190']"#"//body/div/div/main[@class='css-q1edpo eu4oa1w0']/div[@class='css-f9in6m eu4oa1w0']/div[@class='css-qkv3x5 eu4oa1w0']/section[@class='css-u74ql7 eu4oa1w0']/div[1]"    
     satisfaction_rate = driver.find_element(By.XPATH, xpath_for_satisfaction_feed)
     
-    # print(satisfaction_rate.text)
+    print(satisfaction_rate.text)
 
     # Append data to the list
-    # data.append([row['Company Name'], number_of_employees, formatted_company_data[0],formatted_company_data[1],formatted_company_data[2],formatted_company_data[3],formatted_company_data[4], numbers, single_string])
-    data.append([row['Company Name'], number_of_employees, formatted_company_data, numbers, single_string, satisfaction_rate.text])
-
+    data.append([row['Company Name'], industry_type_text, number_of_employees, employee_work_location_text, employee_current_fucntion_text, employee_skillset_text, what_employees_studied_text, numbers, single_string, satisfaction_rate.text])
+        
 # Close the browser after iterating through all companies
 driver.quit()
 
@@ -201,6 +368,6 @@ driver.quit()
 output_df = pd.DataFrame(data, columns=columns)
 
 # Save the DataFrame to an Excel file
-output_df.to_excel("LinkedIn_Company_Output.xlsx", index=False)
+output_df.to_excel("Linkedin_Scrape/LinkedIn_Company_Output_sep2.xlsx", index=False)
 
 
